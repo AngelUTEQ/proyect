@@ -1,0 +1,35 @@
+<div class="error-container">
+  <div class="error-content">
+  <div class="error-number">404</div>
+     <h1 class="error-title">¡Oops! Página no encontrada</h1>
+  
+    <p class="error-description">
+      La página que estás buscando no existe o ha sido movida.
+    </p>
+  
+    <div class="error-illustration">
+      <svg width="200" height="150" viewBox="0 0 200 150" fill="none" xmlns="http://www.w3.org/2000/svg">
+       
+        <circle cx="100" cy="75" r="50" stroke="#666" stroke-width="3" fill="none"/>
+      
+        <circle cx="85" cy="65" r="3" fill="#666"/>
+        <circle cx="115" cy="65" r="3" fill="#666"/>
+      
+        <path d="M 80 90 Q 100 100 120 90" stroke="#666" stroke-width="3" fill="none"/>
+      </svg>
+    </div>
+  
+    <div class="error-actions">
+      <button (click)="goHome()" class="btn-primary">
+        Ir al inicio
+      </button>
+      <button (click)="goBack()" class="btn-secondary">
+        Volver atrás
+      </button>
+    </div>
+  
+    <div class="error-info">
+      <p>Si crees que esto es un error, contacta al administrador.</p>
+    </div>
+  </div>
+</div>

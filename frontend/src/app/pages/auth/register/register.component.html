@@ -1,0 +1,14 @@
+<form (submit)="onSubmit()">
+  <input type="text" [(ngModel)]="username" name="username" placeholder="Usuario" />
+  <input type="password" [(ngModel)]="password" name="password" placeholder="Contraseña" />
+  <button type="submit">Registrar</button>
+</form>
+
+<p class="error" *ngIf="error">{{ error }}</p>
+<p class="success" *ngIf="success">{{ success }}</p>
+
+<div *ngIf="qrCodeDataUrl" style="margin-top: 20px;">
+  <img [src]="qrCodeDataUrl" alt="Código QR para Google Authenticator" />
+  <p>Escanea este código con Google Authenticator</p>
+  <button (click)="goToLogin()">Ir al Login</button>
+</div>

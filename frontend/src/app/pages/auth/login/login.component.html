@@ -1,0 +1,125 @@
+<div class="login-container">
+  <div class="login-card">
+    <div class="login-header">
+      <h2>Iniciar Sesión</h2>
+      <p>Accede a tu cuenta con autenticación OTP</p>
+      
+      <!-- Información del sistema de logs -->
+     
+        
+      
+
+
+    <form (ngSubmit)="onSubmit()" class="login-form" autocomplete="off">
+      <!-- Usuario -->
+      <div class="form-group">
+        <label for="username">Usuario</label>
+        <input 
+          id="username" type="text" 
+          [(ngModel)]="username" name="username" 
+          placeholder="Ingresa tu usuario" class="form-control" 
+          required [disabled]="isLoading" autocomplete="username"
+        />
+      </div>
+
+      <!-- Contraseña -->
+      <div class="form-group">
+        <label for="password">Contraseña</label>
+        <input 
+          id="password" type="password" 
+          [(ngModel)]="password" name="password" 
+          placeholder="Ingresa tu contraseña" class="form-control" 
+          required [disabled]="isLoading" autocomplete="current-password"
+        />
+      </div>
+
+      <!-- OTP -->
+      <div class="form-group">
+        <label for="otp">Código OTP</label>
+        <input 
+          id="otp" type="text" 
+          [(ngModel)]="otp" name="otp" maxlength="6" 
+          placeholder="Código de 6 dígitos" class="form-control otp-input" 
+          required [disabled]="isLoading" autocomplete="one-time-code"
+        />
+        <small class="form-help">Ingresa el código de 6 dígitos de tu aplicación de autenticación</small>
+      </div>
+
+      <!-- Mensaje error -->
+      <div class="error-message" *ngIf="error">
+        <i class="error-icon">⚠️</i> {{ error }}
+      </div>
+
+      <!-- Botón Submit -->
+      <div class="form-group">
+        <button 
+          type="submit" 
+          class="btn-primary"
+          [disabled]="isLoading || !username || !password || !otp"
+        >
+          <span *ngIf="isLoading" class="spinner"></span>
+          <span *ngIf="!isLoading">🔐</span>
+          {{ isLoading ? 'Iniciando sesión...' : 'Iniciar Sesión' }}
+        </button>
+      </div>
+    </form>
+
+    <!-- Botón para ir al dashboard sin iniciar sesión -->
+    <div class="form-group">
+      <button 
+        type="button" 
+        class="btn-secondary"
+        (click)="goToDashboard()"
+        [disabled]="isLoading"
+      >
+        🚀 Ir al Dashboard (sin iniciar sesión)
+      </button>
+    </div>
+
+    <!-- Separador -->
+    <div class="separator"><span>o</span></div>
+
+    <!-- Botón Crear cuenta -->
+    <div class="register-section">
+      <button 
+        type="button" 
+        class="btn-secondary"
+        (click)="goToRegister()"
+        [disabled]="isLoading"
+      >
+        <span>👤</span> Crear nueva cuenta
+      </button>
+    </div>
+
+    <!-- Footer informativo -->
+    <div class="login-footer">
+      <div class="log-requirements">
+        <h4>✅ Sistema de Logs Implementado</h4>
+        <div class="requirements-grid">
+          <div class="requirement-item"><span class="check">✅</span> Response Time</div>
+          <div class="requirement-item"><span class="check">✅</span> Servicio API</div>
+          <div class="requirement-item"><span class="check">✅</span> Time Stamp</div>
+          <div class="requirement-item"><span class="check">✅</span> Status Code</div>
+          <div class="requirement-item"><span class="check">✅</span> Usuario</div>
+        </div>
+      </div>
+      
+      <p class="info-text"><i>🔒</i> Sistema con autenticación de dos factores (2FA) y logging completo</p>
+      <small class="tech-info">API Gateway: Puerto 5000 | Middleware de Logs: ✅ Activo</small>
+    </div>
+  </div>
+
+  <!-- Indicador conexión -->
+  <div class="connection-status">
+    <div class="status-indicator">
+      <span 
+        class="status-dot" 
+        [class.connected]="gatewayStatus.includes('✅')" 
+        [class.error]="gatewayStatus.includes('❌')"
+      ></span>
+      <span class="status-text">
+        {{ gatewayStatus.includes('✅') ? 'API Gateway conectado' : 'API Gateway desconectado' }}
+      </span>
+    </div>
+  </div>
+</div>

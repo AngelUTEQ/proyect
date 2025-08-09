@@ -1,0 +1,136 @@
+<div class="task-create-container">
+  <!-- Loading Overlay -->
+  <div class="loading-overlay" *ngIf="isLoading">
+    <div class="loading-spinner"></div>
+    <p>Cargando estados...</p>
+  </div>
+
+  <!-- Success Message -->
+  <div class="success-message" *ngIf="showSuccess">
+    <span class="icon-check"></span>
+    <span>¡Tarea creada exitosamente!</span>
+  </div>
+
+  <!-- Error Banner -->
+  <div class="error-banner" *ngIf="errorMessage">
+    <span class="icon-alert"></span>
+    <span>{{ errorMessage }}</span>
+    <button class="close-btn" (click)="errorMessage = null" type="button">×</button>
+  </div>
+
+  <!-- Main Card -->
+  <div class="task-create-card">
+    <!-- Header -->
+    <div class="card-header">
+      <h1 class="card-title">
+        <span class="icon-plus"></span>
+        Crear Nueva Tarea
+      </h1>
+    </div>
+
+    <!-- Form -->
+    <form class="task-form" (ngSubmit)="onSubmit()" #taskForm="ngForm">
+      <!-- Nombre de la tarea -->
+      <div class="form-group">
+        <label class="form-label" for="name_task">Nombre de la tarea *</label>
+        <input
+          type="text"
+          id="name_task"
+          name="name_task"
+          class="form-control"
+          [(ngModel)]="task.name_task"
+          (input)="onFieldChange()"
+          placeholder="Ingresa el nombre de la tarea"
+          required
+          minlength="3"
+          maxlength="100"
+        />
+        <div class="error-message" *ngIf="task.name_task && !isFieldValid('name_task')">
+          {{ getFieldError('name_task') }}
+        </div>
+      </div>
+
+      <!-- Descripción -->
+      <div class="form-group">
+        <label class="form-label" for="desc_task">Descripción *</label>
+        <textarea
+          id="desc_task"
+          name="desc_task"
+          class="form-control textarea"
+          [(ngModel)]="task.desc_task"
+          (input)="onFieldChange()"
+          placeholder="Describe la tarea detalladamente"
+          required
+          minlength="10"
+          maxlength="500"
+          rows="4"
+        ></textarea>
+        <div class="error-message" *ngIf="task.desc_task && !isFieldValid('desc_task')">
+          {{ getFieldError('desc_task') }}
+        </div>
+      </div>
+
+      <!-- Fecha límite y Estado -->
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="deadline">Fecha límite *</label>
+          <input
+            type="date"
+            id="deadline"
+            name="deadline"
+            class="form-control"
+            [(ngModel)]="task.deadline"
+            (change)="onFieldChange()"
+            [min]="minDate"
+            required
+          />
+          <div class="error-message" *ngIf="task.deadline && !isFieldValid('deadline')">
+            {{ getFieldError('deadline') }}
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="status">Estado *</label>
+          <select
+            id="status"
+            name="status"
+            class="form-control"
+            [(ngModel)]="task.status"
+            (change)="onFieldChange()"
+            required
+          >
+            <option value="0">Selecciona un estado</option>
+            <option *ngFor="let status of statusList" [value]="status.id">
+              {{ status.name }}
+            </option>
+          </select>
+          <div class="error-message" *ngIf="task.status !== null && !isFieldValid('status')">
+            {{ getFieldError('status') }}
+          </div>
+        </div>
+      </div>
+
+    
+
+      <!-- Botones de acción -->
+      <div class="form-actions">
+        <button
+          type="button"
+          class="btn btn-secondary"
+          (click)="onCancel()"
+          [disabled]="isSubmitting"
+        >
+          Cancelar
+        </button>
+        <button
+          type="submit"
+          class="btn btn-primary"
+          [disabled]="isSubmitting || !taskForm.valid"
+        >
+          <span class="spinner" *ngIf="isSubmitting"></span>
+          {{ isSubmitting ? 'Creando...' : 'Crear Tarea' }}
+        </button>
+      </div>
+    </form>
+  </div>
+</div>

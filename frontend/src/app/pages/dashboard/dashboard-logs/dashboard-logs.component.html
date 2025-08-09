@@ -1,0 +1,259 @@
+<div class="dashboard-container">
+  <!-- Header -->
+  <div class="header">
+    <h1>Dashboard de Logs API Gateway</h1>
+    <div class="header-actions">
+      <button class="btn btn-primary" (click)="refreshData()" [disabled]="loading">
+        <i class="icon-refresh" [class.spinning]="loading"></i>
+        Actualizar
+      </button>
+      <button class="btn btn-secondary" (click)="downloadLogs()">
+        <i class="icon-download"></i>
+        Descargar Logs
+      </button>
+    </div>
+  </div>
+
+  <!-- Error Message -->
+  <div class="alert alert-error" *ngIf="error">
+    {{ error }}
+  </div>
+
+  <!-- Loading Spinner -->
+  <div class="loading-container" *ngIf="loading && !stats">
+    <div class="spinner"></div>
+    <p>Cargando datos...</p>
+  </div>
+
+  <!-- Dashboard Content -->
+  <div class="dashboard-content" *ngIf="stats && !loading">
+    
+    <!-- Stats Cards -->
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-icon">
+          <i class="icon-api"></i>
+        </div>
+        <div class="stat-content">
+          <h3>{{ stats.total_api_calls | number }}</h3>
+          <p>Total Llamadas API</p>
+        </div>
+      </div>
+      
+      <div class="stat-card">
+        <div class="stat-icon">
+          <i class="icon-users"></i>
+        </div>
+        <div class="stat-content">
+          <h3>{{ stats.unique_users | number }}</h3>
+          <p>Usuarios Únicos</p>
+        </div>
+      </div>
+      
+      <div class="stat-card">
+        <div class="stat-icon">
+          <i class="icon-services"></i>
+        </div>
+        <div class="stat-content">
+          <h3>{{ Object.keys(stats.service_statistics).length }}</h3>
+          <p>Servicios Activos</p>
+        </div>
+      </div>
+      
+      <div class="stat-card">
+        <div class="stat-icon">
+          <i class="icon-clock"></i>
+        </div>
+        <div class="stat-content">
+          <h3>{{ getAverageResponseTime() }}ms</h3>
+          <p>Tiempo Promedio</p>
+        </div>
+      </div>
+
+      <!-- Nuevas métricas -->
+      <div class="stat-card">
+        <div class="stat-icon">
+          <i class="icon-success"></i>
+        </div>
+        <div class="stat-content">
+          <h3>{{ stats.success_rate | number:'1.1-1' }}%</h3>
+          <p>Tasa de Éxito</p>
+        </div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-icon">
+          <i class="icon-error"></i>
+        </div>
+        <div class="stat-content">
+          <h3>{{ stats.error_rate | number:'1.1-1' }}%</h3>
+          <p>Tasa de Error</p>
+        </div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-icon">
+          <i class="icon-fast"></i>
+        </div>
+        <div class="stat-content">
+          <h3>{{ getFastestAPI() }}</h3>
+          <p>API Más Rápida</p>
+        </div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-icon">
+          <i class="icon-slow"></i>
+        </div>
+        <div class="stat-content">
+          <h3>{{ getSlowestAPI() }}</h3>
+          <p>API Más Lenta</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Charts Grid -->
+    <div class="charts-grid">
+      
+      <!-- Status Codes Chart -->
+      <div class="chart-container">
+        <div class="chart-header">
+          <h3>Status Codes</h3>
+          <p>Distribución de códigos de respuesta HTTP</p>
+        </div>
+        <canvas id="statusCodeChart" width="400" height="300"></canvas>
+      </div>
+
+      <!-- Services Chart -->
+      <div class="chart-container">
+        <div class="chart-header">
+          <h3>Servicios</h3>
+          <p>Número de llamadas por servicio</p>
+        </div>
+        <canvas id="serviceChart" width="400" height="300"></canvas>
+      </div>
+
+      <!-- Hourly Traffic Chart -->
+      <div class="chart-container">
+        <div class="chart-header">
+          <h3>Tráfico por Horas</h3>
+          <p>Distribución del tráfico en las últimas 24 horas</p>
+        </div>
+        <canvas id="hourlyTrafficChart" width="400" height="300"></canvas>
+      </div>
+
+      <!-- Error Rate Chart -->
+      <div class="chart-container">
+        <div class="chart-header">
+          <h3>Tasa de Éxito vs Error</h3>
+          <p>Proporción de requests exitosas vs con error</p>
+        </div>
+        <canvas id="errorRateChart" width="400" height="300"></canvas>
+      </div>
+
+      <!-- Top Endpoints Chart -->
+      <div class="chart-container full-width">
+        <div class="chart-header">
+          <h3>Top Endpoints</h3>
+          <p>Endpoints más utilizados con su tiempo de respuesta promedio</p>
+        </div>
+        <canvas id="topEndpointsChart" width="800" height="400"></canvas>
+      </div>
+
+      <!-- Response Times Chart -->
+      <div class="chart-container full-width">
+        <div class="chart-header">
+          <h3>Tiempos de Respuesta</h3>
+          <p>Análisis de performance por servicio (Promedio, Mínimo, Máximo)</p>
+        </div>
+        <canvas id="responseTimeChart" width="800" height="400"></canvas>
+      </div>
+
+    </div>
+
+    <!-- API Performance Summary -->
+    <div class="performance-summary" style="margin-top: 40px;">
+      <div class="section-header">
+        <h3>Resumen de Performance</h3>
+        <p>Análisis detallado de las APIs</p>
+      </div>
+      
+      <div class="performance-grid">
+        <div class="performance-card">
+          <h4>API Más Rápida</h4>
+          <div class="metric-value success">{{ getFastestAPI() }}</div>
+          <p>{{ getFastestResponseTime() }}ms promedio</p>
+        </div>
+        
+        <div class="performance-card">
+          <h4>API Más Lenta</h4>
+          <div class="metric-value warning">{{ getSlowestAPI() }}</div>
+          <p>{{ getSlowestResponseTime() }}ms promedio</p>
+        </div>
+        
+        <div class="performance-card">
+          <h4>API Más Consultada</h4>
+          <div class="metric-value info">{{ getMostUsedAPI() }}</div>
+          <p>{{ getMostUsedAPICount() }} llamadas</p>
+        </div>
+        
+        <div class="performance-card">
+          <h4>API Menos Consultada</h4>
+          <div class="metric-value neutral">{{ getLeastUsedAPI() }}</div>
+          <p>{{ getLeastUsedAPICount() }} llamadas</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Recent Logs Table -->
+    <div class="logs-section" style="margin-top: 40px;">
+      <div class="section-header">
+        <h3>Logs Recientes</h3>
+        <span class="log-count">Últimas {{ recentLogs.length }} entradas</span>
+      </div>
+      
+      <div class="table-container">
+        <table class="logs-table">
+          <thead>
+            <tr>
+              <th>Timestamp</th>
+              <th>Usuario</th>
+              <th>Servicio</th>
+              <th>Endpoint</th>
+              <th>Método</th>
+              <th>Status</th>
+              <th>Tiempo (ms)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let log of recentLogs" class="log-row">
+              <td class="timestamp">{{ formatTimestamp(log.timestamp) }}</td>
+              <td class="user">{{ log.user }}</td>
+              <td class="service">{{ log.service.replace('-service', '') || 'N/A' }}</td>
+              <td class="endpoint">{{ formatEndpoint(log.endpoint) }}</td>
+              <td class="method">
+                <span class="method-badge" [class]="'method-' + log.method.toLowerCase()">
+                  {{ log.method }}
+                </span>
+              </td>
+              <td class="status">
+                <span class="status-badge" [class]="getStatusBadgeClass(log.status_code)">
+                  {{ log.status_code }}
+                </span>
+              </td>
+              <td class="response-time" [class.slow]="log.response_time_ms > 1000">
+                {{ log.response_time_ms }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      
+      <div class="table-empty" *ngIf="recentLogs.length === 0">
+        <i class="icon-empty"></i>
+        <p>No hay logs disponibles</p>
+      </div>
+    </div>
+
+  </div>
+</div>

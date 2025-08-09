@@ -1,0 +1,344 @@
+<div class="kanban-board">
+  <!-- Header -->
+  <div class="board-header">
+    <h1>Tablero de Tareas</h1>
+    <p-button 
+      label="Nueva Tarea" 
+      icon="pi pi-plus" 
+      (click)="openNewTaskDialog()"
+      class="create-task-btn">
+    </p-button>
+  </div>
+
+  <!-- Kanban Columns -->
+  <div class="kanban-columns">
+    
+    <!-- In Progress Column -->
+    <div class="kanban-column">
+      <div class="column-header in-progress">
+        <h3>
+          <i class="pi pi-clock"></i>
+          En Progreso
+          <span class="task-count">({{ inProgressTasks.length }})</span>
+        </h3>
+      </div>
+      <div class="column-body">
+        <div *ngFor="let task of inProgressTasks" class="task-card">
+          <p-card>
+            <div class="task-header">
+              <h4>{{ task.name_task }}</h4>
+              <div class="task-actions">
+                <p-button 
+                  icon="pi pi-pencil" 
+                  [text]="true" 
+                  size="small"
+                  (click)="editTask(task)"
+                  pTooltip="Editar">
+                </p-button>
+                <p-button 
+                  icon="pi pi-trash" 
+                  [text]="true" 
+                  size="small"
+                  severity="danger"
+                  (click)="deleteTask(task)"
+                  pTooltip="Eliminar">
+                </p-button>
+              </div>
+            </div>
+            <p class="task-description">{{ task.desc_task }}</p>
+            <div class="task-footer">
+              <p-tag 
+                [value]="task.status" 
+                [severity]="getStatusSeverity(task.status)">
+              </p-tag>
+              <small class="task-deadline" 
+                [class.overdue]="isOverdue(task.deadline)">
+                <i class="pi pi-calendar"></i>
+                {{ formatDate(task.deadline) }}
+              </small>
+            </div>
+            <div class="task-meta">
+              <small>Creado por: {{ task.Created_by }}</small>
+            </div>
+            <div class="move-actions">
+              <p-button 
+                label="Revisión" 
+                size="small" 
+                [outlined]="true"
+                (click)="moveTask(task, 'Revision')">
+              </p-button>
+              <p-button 
+                label="Pausar" 
+                size="small" 
+                [outlined]="true"
+                severity="secondary"
+                (click)="moveTask(task, 'Paused')">
+              </p-button>
+            </div>
+          </p-card>
+        </div>
+      </div>
+    </div>
+
+    <!-- Revision Column -->
+    <div class="kanban-column">
+      <div class="column-header revision">
+        <h3>
+          <i class="pi pi-eye"></i>
+          En Revisión
+          <span class="task-count">({{ revisionTasks.length }})</span>
+        </h3>
+      </div>
+      <div class="column-body">
+        <div *ngFor="let task of revisionTasks" class="task-card">
+          <p-card>
+            <div class="task-header">
+              <h4>{{ task.name_task }}</h4>
+              <div class="task-actions">
+                <p-button 
+                  icon="pi pi-pencil" 
+                  [text]="true" 
+                  size="small"
+                  (click)="editTask(task)"
+                  pTooltip="Editar">
+                </p-button>
+                <p-button 
+                  icon="pi pi-trash" 
+                  [text]="true" 
+                  size="small"
+                  severity="danger"
+                  (click)="deleteTask(task)"
+                  pTooltip="Eliminar">
+                </p-button>
+              </div>
+            </div>
+            <p class="task-description">{{ task.desc_task }}</p>
+            <div class="task-footer">
+              <p-tag 
+                [value]="task.status" 
+                [severity]="getStatusSeverity(task.status)">
+              </p-tag>
+              <small class="task-deadline" 
+                [class.overdue]="isOverdue(task.deadline)">
+                <i class="pi pi-calendar"></i>
+                {{ formatDate(task.deadline) }}
+              </small>
+            </div>
+            <div class="task-meta">
+              <small>Creado por: {{ task.Created_by }}</small>
+            </div>
+            <div class="move-actions">
+              <p-button 
+                label="En Progreso" 
+                size="small" 
+                [outlined]="true"
+                severity="info"
+                (click)="moveTask(task, 'In progress')">
+              </p-button>
+              <p-button 
+                label="Completar" 
+                size="small" 
+                [outlined]="true"
+                severity="success"
+                (click)="moveTask(task, 'Completed')">
+              </p-button>
+            </div>
+          </p-card>
+        </div>
+      </div>
+    </div>
+
+    <!-- Completed Column -->
+    <div class="kanban-column">
+      <div class="column-header completed">
+        <h3>
+          <i class="pi pi-check-circle"></i>
+          Completadas
+          <span class="task-count">({{ completedTasks.length }})</span>
+        </h3>
+      </div>
+      <div class="column-body">
+        <div *ngFor="let task of completedTasks" class="task-card">
+          <p-card>
+            <div class="task-header">
+              <h4>{{ task.name_task }}</h4>
+              <div class="task-actions">
+                <p-button 
+                  icon="pi pi-pencil" 
+                  [text]="true" 
+                  size="small"
+                  (click)="editTask(task)"
+                  pTooltip="Editar">
+                </p-button>
+                <p-button 
+                  icon="pi pi-trash" 
+                  [text]="true" 
+                  size="small"
+                  severity="danger"
+                  (click)="deleteTask(task)"
+                  pTooltip="Eliminar">
+                </p-button>
+              </div>
+            </div>
+            <p class="task-description">{{ task.desc_task }}</p>
+            <div class="task-footer">
+              <p-tag 
+                [value]="task.status" 
+                [severity]="getStatusSeverity(task.status)">
+              </p-tag>
+              <small class="task-deadline">
+                <i class="pi pi-calendar"></i>
+                {{ formatDate(task.deadline) }}
+              </small>
+            </div>
+            <div class="task-meta">
+              <small>Creado por: {{ task.Created_by }}</small>
+            </div>
+            <div class="move-actions">
+              <p-button 
+                label="Revisión" 
+                size="small" 
+                [outlined]="true"
+                severity="warn"
+                (click)="moveTask(task, 'Revision')">
+              </p-button>
+            </div>
+          </p-card>
+        </div>
+      </div>
+    </div>
+
+    <!-- Paused Column -->
+    <div class="kanban-column">
+      <div class="column-header paused">
+        <h3>
+          <i class="pi pi-pause"></i>
+          Pausadas
+          <span class="task-count">({{ pausedTasks.length }})</span>
+        </h3>
+      </div>
+      <div class="column-body">
+        <div *ngFor="let task of pausedTasks" class="task-card">
+          <p-card>
+            <div class="task-header">
+              <h4>{{ task.name_task }}</h4>
+              <div class="task-actions">
+                <p-button 
+                  icon="pi pi-pencil" 
+                  [text]="true" 
+                  size="small"
+                  (click)="editTask(task)"
+                  pTooltip="Editar">
+                </p-button>
+                <p-button 
+                  icon="pi pi-trash" 
+                  [text]="true" 
+                  size="small"
+                  severity="danger"
+                  (click)="deleteTask(task)"
+                  pTooltip="Eliminar">
+                </p-button>
+              </div>
+            </div>
+            <p class="task-description">{{ task.desc_task }}</p>
+            <div class="task-footer">
+              <p-tag 
+                [value]="task.status" 
+                [severity]="getStatusSeverity(task.status)">
+              </p-tag>
+              <small class="task-deadline" 
+                [class.overdue]="isOverdue(task.deadline)">
+                <i class="pi pi-calendar"></i>
+                {{ formatDate(task.deadline) }}
+              </small>
+            </div>
+            <div class="task-meta">
+              <small>Creado por: {{ task.Created_by }}</small>
+            </div>
+            <div class="move-actions">
+              <p-button 
+                label="Reanudar" 
+                size="small" 
+                [outlined]="true"
+                severity="info"
+                (click)="moveTask(task, 'In progress')">
+              </p-button>
+            </div>
+          </p-card>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Task Dialog -->
+<p-dialog 
+  [(visible)]="showTaskDialog" 
+  [header]="isEditMode ? 'Editar Tarea' : 'Nueva Tarea'"
+  [modal]="true"
+  [style]="{ width: '500px' }"
+  [closable]="true">
+  
+  <div class="task-form">
+    <div class="form-group">
+      <label for="taskName">Nombre de la Tarea</label>
+      <input 
+        type="text" 
+        id="taskName"
+        pInputText 
+        [(ngModel)]="currentTask.name_task"
+        placeholder="Ingresa el nombre de la tarea"
+        class="form-control">
+    </div>
+
+    <div class="form-group">
+      <label for="taskDesc">Descripción</label>
+      <textarea 
+        id="taskDesc"
+        pInputTextarea 
+        [(ngModel)]="currentTask.desc_task"
+        placeholder="Describe la tarea"
+        rows="3"
+        class="form-control">
+      </textarea>
+    </div>
+
+    <div class="form-group">
+      <label for="taskStatus">Estado</label>
+      <p-dropdown 
+        id="taskStatus"
+        [(ngModel)]="currentTask.status"
+        [options]="statusList"
+        optionLabel="name"
+        optionValue="name"
+        placeholder="Selecciona un estado"
+        class="form-control">
+      </p-dropdown>
+    </div>
+
+    <div class="form-group">
+      <label for="taskDeadline">Fecha límite</label>
+      <input 
+        type="date" 
+        id="taskDeadline"
+        [(ngModel)]="currentTask.deadline"
+        class="form-control">
+    </div>
+  </div>
+
+  <ng-template pTemplate="footer">
+    <div class="dialog-buttons">
+      <p-button 
+        label="Cancelar" 
+        severity="secondary" 
+        [outlined]="true"
+        (click)="showTaskDialog = false">
+      </p-button>
+      <p-button 
+        label="Guardar" 
+        (click)="saveTask()">
+      </p-button>
+    </div>
+  </ng-template>
+</p-dialog>
