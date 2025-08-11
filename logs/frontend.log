@@ -1,0 +1,36 @@
+[1m[33mWarning: Running a server with --disable-host-check is a security risk. See https://medium.com/webpack/webpack-dev-server-middleware-security-issues-1489d950874a for more information.[39m[22m
+[1m[33mThe "disableHostCheck" option will not be used because it is not supported by the "@angular-devkit/build-angular:application" builder.[39m[22m
+[1m[33mComponent HMR has been enabled, see https://angular.dev/hmr for more info.[39m[22m
+[33m>[39m Building...
+[32m√[39m Building...
+[35mBrowser bundles[39m     
+[1mInitial chunk files[22m [2m | [22m[1mNames[22m                   [2m | [22m [1mRaw size[22m
+[32mmain.js[39m             [2m | [22m[2mmain[22m                    [2m | [22m[36m177.86 kB[39m[2m | [22m
+[32mpolyfills.js[39m        [2m | [22m[2mpolyfills[22m               [2m | [22m [36m89.77 kB[39m[2m | [22m
+[32mchunk-ZGBWINWN.js[39m   [2m | [22m[2m-[22m                       [2m | [22m  [36m1.45 kB[39m[2m | [22m
+[32mstyles.css[39m          [2m | [22m[2mstyles[22m                  [2m | [22m [36m95 bytes[39m[2m | [22m
+
+[1m [22m                   [2m | [22m[1mInitial total[22m           [2m | [22m[1m269.18 kB[22m
+
+[1mLazy chunk files[22m    [2m | [22m[1mNames[22m                   [2m | [22m [1mRaw size[22m
+[32mchunk-PKV5YWZV.js[39m   [2m | [22m[2mdashboard-logs-component[22m[2m | [22m [36m66.78 kB[39m[2m | [22m
+
+
+[35mServer bundles[39m      
+[1mInitial chunk files[22m [2m | [22m[1mNames[22m                   [2m | [22m [1mRaw size[22m
+[32mpolyfills.server.mjs[39m[2m | [22m[2mpolyfills.server[22m        [2m | [22m[36m567.22 kB[39m[2m | [22m
+[32mmain.server.mjs[39m     [2m | [22m[2mmain.server[22m             [2m | [22m[36m179.18 kB[39m[2m | [22m
+[32mserver.mjs[39m          [2m | [22m[2mserver[22m                  [2m | [22m  [36m1.86 kB[39m[2m | [22m
+[32mchunk-UL4262L2.mjs[39m  [2m | [22m[2m-[22m                       [2m | [22m  [36m1.49 kB[39m[2m | [22m
+
+[1mLazy chunk files[22m    [2m | [22m[1mNames[22m                   [2m | [22m [1mRaw size[22m
+[32mchunk-JM7B72J3.mjs[39m  [2m | [22m[2mdashboard-logs-component[22m[2m | [22m [36m66.82 kB[39m[2m | [22m
+
+Application bundle generation complete. [15.012 seconds]
+
+Watch mode enabled. Watching for file changes...
+NOTE: Raw file sizes do not reflect development server per-request transformations.
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://localhost:[1m4200[22m/[39m
+  [32m➜[39m  [1mNetwork[22m: [36mhttp://192.168.56.1:[1m4200[22m/[39m
+  [32m➜[39m  [1mNetwork[22m: [36mhttp://192.168.100.4:[1m4200[22m/[39m
+[1m[33mNG02801: Angular detected that `HttpClient` is not configured to use `fetch` APIs. It's strongly recommended to enable `fetch` for applications that use Server-Side Rendering for better performance and compatibility. To enable `fetch`, add the `withFetch()` to the `provideHttpClient()` call at the root of the application.[39m[22m

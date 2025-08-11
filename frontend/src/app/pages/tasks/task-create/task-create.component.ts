@@ -34,7 +34,7 @@ interface ErrorResponse {
   styleUrls: ['./task-create.component.css']
 })
 export class TaskCreateComponent implements OnInit {
-  private readonly API_GATEWAY_URL = 'http://127.0.0.1:5000';
+  private readonly API_GATEWAY_URL = 'https://answering-plastic-euro-suited.trycloudflare.com';
   
   task: Task = {
     name_task: '',

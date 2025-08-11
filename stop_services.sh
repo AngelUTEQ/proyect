@@ -1,5 +1,3 @@
-#!/bin/bash
-
 PROJECT_DIR="$(pwd)"
 LOG_DIR="$PROJECT_DIR/logs"
 

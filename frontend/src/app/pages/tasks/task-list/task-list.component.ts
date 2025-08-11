@@ -69,7 +69,7 @@ export class TaskListComponent implements OnInit {
   loading = false;
   
   // URL base del API Gateway
-  private apiUrl = 'http://127.0.0.1:5000';
+  private apiUrl = 'https://answering-plastic-euro-suited.trycloudflare.com';
   
   constructor(
     private router: Router,

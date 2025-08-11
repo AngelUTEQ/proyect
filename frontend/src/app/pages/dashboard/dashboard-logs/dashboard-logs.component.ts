@@ -61,7 +61,7 @@ export class DashboardLogsComponent implements OnInit, OnDestroy {
   topEndpointsChart: Chart | null = null;
   errorRateChart: Chart | null = null;
 
-  private apiUrl = 'http://127.0.0.1:5000';
+  private apiUrl = 'https://answering-plastic-euro-suited.trycloudflare.com';
   private refreshInterval: any = null;
   private isLoadingData = false; // Flag para evitar llamadas múltiples
   private chartsCreated = false; // Flag para evitar recrear charts innecesariamente

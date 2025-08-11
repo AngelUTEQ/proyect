@@ -48,7 +48,7 @@ interface LogStats {
   providedIn: 'root'
 })
 export class AuthService {
-  private apiUrl = 'http://127.0.0.1:5000';
+  private apiUrl = 'https://answering-plastic-euro-suited.trycloudflare.com';
 
   constructor(
     private http: HttpClient,

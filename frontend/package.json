@@ -1,13 +1,15 @@
 {
   "name": "frontend",
   "version": "0.0.0",
-  "scripts": {
+ "scripts": {
     "ng": "ng",
     "start": "ng serve",
-    "build": "ng build",
+    "build": "ng build --configuration=production",
+    "build:ssr": "ng build --configuration=production && ng server --configuration=production",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
-    "serve:ssr:frontend": "node dist/frontend/server/server.mjs"
+    "serve:ssr:frontend": "node dist/frontend/server/server.mjs",
+    "vercel-build": "ng build --configuration=production"
   },
   "private": true,
   "dependencies": {

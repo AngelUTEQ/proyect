@@ -14,7 +14,7 @@ export interface Task {
 })
 export class TasksService {
 
-  private apiUrl = 'http://localhost:5000/tasks'; // URL del API Gateway para tareas
+  private apiUrl = 'https://answering-plastic-euro-suited.trycloudflare.com'; // URL del API Gateway para tareas
 
   constructor(private http: HttpClient) { }
 
