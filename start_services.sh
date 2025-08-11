@@ -1,332 +1,275 @@
 #!/bin/bash
 
+# start_termux_no_root.sh - Script optimizado para Termux sin permisos root
+
 PROJECT_DIR="$(pwd)"
 VENV_DIR="$PROJECT_DIR/venv"
 LOG_DIR="$PROJECT_DIR/logs"
-TUNNEL_LOG_DIR="$PROJECT_DIR/logs/tunnels"
+PID_DIR="$PROJECT_DIR/pids"
 
-# Crear directorio de logs
-mkdir -p "$LOG_DIR"
-mkdir -p "$TUNNEL_LOG_DIR"
+# Crear directorios necesarios
+mkdir -p "$LOG_DIR" "$PID_DIR"
 
-# Colores para output
+# Colores
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 PURPLE='\033[0;35m'
 CYAN='\033[0;36m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-echo -e "${BLUE}=== Iniciando Microservicios Backend y Túneles ===${NC}"
+echo -e "${BLUE}=== Microservicios para Termux (Sin Root) ===${NC}"
 
-# Verificar entorno virtual para backend
-if [ ! -d "$VENV_DIR" ]; then
-    echo -e "${RED}Error: venv no encontrado en $VENV_DIR${NC}"
-    echo -e "${YELLOW}Ejecuta: python -m venv venv && source venv/bin/activate && pip install flask requests flask-cors${NC}"
+# Verificar Python
+if ! command -v python &> /dev/null; then
+    echo -e "${RED}❌ Python no encontrado${NC}"
+    echo -e "${YELLOW}Instala con: pkg install python${NC}"
     exit 1
+fi
+
+# Crear entorno virtual si no existe
+if [ ! -d "$VENV_DIR" ]; then
+    echo -e "${YELLOW}Creando entorno virtual...${NC}"
+    python -m venv venv
 fi
 
 # Activar entorno virtual
+echo -e "${YELLOW}Activando entorno virtual...${NC}"
 source "$VENV_DIR/bin/activate"
 
-# Verificar herramientas de túnel
-echo -e "${BLUE}Verificando herramientas de túnel...${NC}"
-TUNNEL_TOOL=""
+# Instalar dependencias
+echo -e "${YELLOW}Verificando dependencias Python...${NC}"
+pip install --quiet flask requests flask-cors 2>/dev/null
 
-# Verificar cloudflared (para backend)
-if command -v cloudflared &> /dev/null; then
-    TUNNEL_TOOL="cloudflared"
-    echo -e "${GREEN}✓ cloudflared encontrado (será usado para backend)${NC}"
-elif command -v ngrok &> /dev/null; then
-    TUNNEL_TOOL="ngrok"
-    echo -e "${GREEN}✓ ngrok encontrado (será usado para backend)${NC}"
-else
-    echo -e "${RED}No se encontró ninguna herramienta de túnel (ngrok o cloudflared)${NC}"
-    echo -e "${YELLOW}Instala una de las dos:${NC}"
-    echo -e "${YELLOW}- ngrok: https://ngrok.com/download${NC}"
-    echo -e "${YELLOW}- cloudflared: https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/install-and-setup/installation/${NC}"
-    exit 1
-fi
-
-# Función para verificar puertos
-check_port() {
-    local port="$1"
-    local service="$2"
-    if lsof -i :"$port" > /dev/null 2>&1; then
-        echo -e "${RED}Error: Puerto $port ($service) ya está en uso${NC}"
-        echo -e "${YELLOW}Usa: lsof -ti:$port | xargs kill -9${NC}"
-        exit 1
-    fi
+# Función para limpiar procesos anteriores (método Termux)
+cleanup_previous() {
+    echo -e "${BLUE}Limpiando procesos anteriores...${NC}"
+    
+    # Método 1: Por PID files
+    for pid_file in "$PID_DIR"/*.pid; do
+        if [ -f "$pid_file" ]; then
+            pid=$(cat "$pid_file" 2>/dev/null)
+            if [ ! -z "$pid" ]; then
+                kill "$pid" 2>/dev/null || true
+            fi
+            rm -f "$pid_file"
+        fi
+    done
+    
+    # Método 2: Buscar procesos Python con app.py
+    pkill -f "python.*app\.py" 2>/dev/null || true
+    
+    # Método 3: Por nombre de proceso
+    for service in api_gateway auth_service user_service task_services; do
+        pkill -f "$service" 2>/dev/null || true
+    done
+    
+    sleep 2
+    echo -e "${GREEN}✓ Limpieza completada${NC}"
 }
 
-# Verificar puertos backend
-echo -e "${BLUE}Verificando puertos...${NC}"
-check_port 5000 "API Gateway"
-check_port 5001 "Auth Service"
-check_port 5002 "User Service"
-check_port 5003 "Task Service"
-
-# Función para iniciar servicios Python
-start_service() {
+# Función para iniciar servicio (método simplificado)
+start_service_termux() {
     local service_dir=$1
     local service_name=$2
     local port=$3
-    local script_file=$4
     
     echo -e "${YELLOW}Iniciando $service_name en puerto $port...${NC}"
     
-    if [ ! -d "$PROJECT_DIR/$service_dir" ]; then
-        echo -e "${RED}Error: Directorio $service_dir no encontrado${NC}"
+    if [ ! -d "$service_dir" ]; then
+        echo -e "${RED}✗ Directorio $service_dir no encontrado${NC}"
         return 1
     fi
     
-    if [ ! -f "$PROJECT_DIR/$service_dir/$script_file" ]; then
-        echo -e "${RED}Error: Archivo $script_file no encontrado en $service_dir${NC}"
+    if [ ! -f "$service_dir/app.py" ]; then
+        echo -e "${RED}✗ $service_dir/app.py no encontrado${NC}"
         return 1
     fi
     
-    cd "$PROJECT_DIR/$service_dir" || exit 1
-    nohup python "$script_file" > "$LOG_DIR/$service_name.log" 2>&1 &
+    # Cambiar al directorio del servicio
+    cd "$service_dir" || return 1
+    
+    # Iniciar el servicio en background
+    python app.py > "$LOG_DIR/$service_name.log" 2>&1 &
     local pid=$!
-    echo "$pid" > "$LOG_DIR/$service_name.pid"
     
-    # Esperar un momento para verificar que el proceso inició correctamente
-    sleep 2
+    # Guardar PID
+    echo "$pid" > "$PID_DIR/$service_name.pid"
+    
+    # Volver al directorio principal
+    cd "$PROJECT_DIR"
+    
+    # Verificar que inició (método simple)
+    sleep 3
     if kill -0 "$pid" 2>/dev/null; then
-        echo -e "${GREEN}✓ $service_name iniciado correctamente (PID: $pid)${NC}"
+        echo -e "${GREEN}✓ $service_name iniciado (PID: $pid)${NC}"
+        return 0
     else
         echo -e "${RED}✗ Error al iniciar $service_name${NC}"
+        echo -e "${RED}Ver log: tail $LOG_DIR/$service_name.log${NC}"
         return 1
     fi
-    
-    cd "$PROJECT_DIR"
 }
 
-# Función para crear túneles con ngrok
-create_ngrok_tunnel() {
-    local port=$1
-    local service_name=$2
-    local log_file="$TUNNEL_LOG_DIR/${service_name}-tunnel.log"
+# Función para verificar si un servicio responde
+test_service() {
+    local url=$1
+    local name=$2
     
-    echo -e "${PURPLE}🔗 Creando túnel ngrok para $service_name (puerto $port)...${NC}"
-    
-    # Crear túnel ngrok en background
-    nohup ngrok http $port > "$log_file" 2>&1 &
-    local tunnel_pid=$!
-    echo "$tunnel_pid" > "$TUNNEL_LOG_DIR/${service_name}-tunnel.pid"
-    
-    # Esperar un poco para que se establezca la conexión
-    sleep 5
-    
-    if kill -0 "$tunnel_pid" 2>/dev/null; then
-        echo -e "${GREEN}✓ Túnel ngrok $service_name creado (PID: $tunnel_pid)${NC}"
-    else
-        echo -e "${RED}✗ Error al crear túnel ngrok $service_name${NC}"
-    fi
-}
-
-# Función para crear túneles con cloudflared
-create_cloudflared_tunnel() {
-    local port=$1
-    local service_name=$2
-    local log_file="$TUNNEL_LOG_DIR/${service_name}-tunnel.log"
-    
-    echo -e "${PURPLE}🔗 Creando túnel cloudflared para $service_name (puerto $port)...${NC}"
-    
-    # Crear túnel en background
-    nohup cloudflared tunnel --url http://localhost:$port > "$log_file" 2>&1 &
-    local tunnel_pid=$!
-    echo "$tunnel_pid" > "$TUNNEL_LOG_DIR/${service_name}-tunnel.pid"
-    
-    # Esperar un poco para que se establezca la conexión
-    sleep 3
-    
-    if kill -0 "$tunnel_pid" 2>/dev/null; then
-        echo -e "${GREEN}✓ Túnel cloudflared $service_name creado (PID: $tunnel_pid)${NC}"
-    else
-        echo -e "${RED}✗ Error al crear túnel cloudflared $service_name${NC}"
-    fi
-}
-
-# Función para crear túnel según la herramienta
-create_tunnel() {
-    local port=$1
-    local service_name=$2
-    local tool=$3
-    
-    if [ "$tool" = "ngrok" ]; then
-        create_ngrok_tunnel $port $service_name
-    else
-        create_cloudflared_tunnel $port $service_name
-    fi
-}
-
-# Función para extraer URL del túnel ngrok
-extract_ngrok_url() {
-    local service_name=$1
-    local log_file="$TUNNEL_LOG_DIR/${service_name}-tunnel.log"
-    
-    if [ -f "$log_file" ]; then
-        # Buscar la URL en el log de ngrok
-        local url=$(grep -o 'https://[^[:space:]]*\.ngrok[^[:space:]]*' "$log_file" 2>/dev/null | head -1)
-        if [ ! -z "$url" ]; then
-            echo "$url"
+    if command -v curl &> /dev/null; then
+        if curl -s --connect-timeout 5 "$url" > /dev/null 2>&1; then
+            echo -e "${GREEN}✓ $name responde${NC}"
         else
-            echo "⏳ Estableciendo..."
+            echo -e "${YELLOW}⚠ $name no responde aún${NC}"
         fi
     else
-        echo "❌ No disponible"
+        echo -e "${BLUE}ℹ curl no disponible para probar $name${NC}"
     fi
 }
 
-# Función para extraer URL del túnel cloudflared
-extract_cloudflared_url() {
-    local service_name=$1
-    local log_file="$TUNNEL_LOG_DIR/${service_name}-tunnel.log"
+# Función para crear túnel simple
+create_simple_tunnel() {
+    local port=$1
+    local service_name=$2
     
-    if [ -f "$log_file" ]; then
-        # Buscar la URL en el log
-        local url=$(grep -o 'https://[^[:space:]]*\.trycloudflare\.com' "$log_file" 2>/dev/null | head -1)
-        if [ ! -z "$url" ]; then
-            echo "$url"
-        else
-            echo "⏳ Estableciendo..."
-        fi
-    else
-        echo "❌ No disponible"
-    fi
-}
-
-# Función para extraer URL según la herramienta
-extract_tunnel_url() {
-    local service_name=$1
-    local tool=$2
+    echo -e "${PURPLE}🔗 Creando túnel para $service_name (puerto $port)${NC}"
     
-    if [ "$tool" = "ngrok" ]; then
-        extract_ngrok_url $service_name
+    if command -v cloudflared &> /dev/null; then
+        echo -e "${BLUE}Usando cloudflared...${NC}"
+        cloudflared tunnel --url http://localhost:$port > "$LOG_DIR/${service_name}_tunnel.log" 2>&1 &
+        local tunnel_pid=$!
+        echo "$tunnel_pid" > "$PID_DIR/${service_name}_tunnel.pid"
+        
+        echo -e "${GREEN}✓ Túnel cloudflared iniciado para $service_name${NC}"
+        echo -e "${CYAN}Ver URL en: tail -f $LOG_DIR/${service_name}_tunnel.log${NC}"
+        
+    elif command -v ngrok &> /dev/null; then
+        echo -e "${BLUE}Usando ngrok...${NC}"
+        ngrok http $port > "$LOG_DIR/${service_name}_tunnel.log" 2>&1 &
+        local tunnel_pid=$!
+        echo "$tunnel_pid" > "$PID_DIR/${service_name}_tunnel.pid"
+        
+        echo -e "${GREEN}✓ Túnel ngrok iniciado para $service_name${NC}"
+        echo -e "${CYAN}Ver URL en: tail -f $LOG_DIR/${service_name}_tunnel.log${NC}"
     else
-        extract_cloudflared_url $service_name
+        echo -e "${YELLOW}⚠ No hay herramientas de túnel disponibles${NC}"
+        echo -e "${BLUE}Servicio disponible solo localmente: http://127.0.0.1:$port${NC}"
     fi
 }
 
-# Iniciar servicios en orden
-echo -e "${BLUE}Iniciando servicios backend...${NC}"
+# Limpiar procesos anteriores
+cleanup_previous
 
-start_service "auth_service" "auth_service" 5001 "app.py"
-sleep 1
-start_service "user_service" "user_service" 5002 "app.py"
-sleep 1
-start_service "task_services" "task_services" 5003 "app.py"
-sleep 1
-start_service "api_gateway" "api_gateway" 5000 "app.py"
+# Iniciar servicios uno por uno
+echo -e "${BLUE}=== Iniciando servicios ===${NC}"
 
-echo -e "${GREEN}=== Todos los servicios backend iniciados ===${NC}"
+services_started=0
 
-# Esperar un poco más para que los servicios estén completamente listos
-echo -e "${YELLOW}Esperando que los servicios estén completamente listos (10s)...${NC}"
+if start_service_termux "auth_service" "auth_service" 5001; then
+    services_started=$((services_started + 1))
+fi
+
+if start_service_termux "user_service" "user_service" 5002; then
+    services_started=$((services_started + 1))
+fi
+
+if start_service_termux "task_services" "task_services" 5003; then
+    services_started=$((services_started + 1))
+fi
+
+if start_service_termux "api_gateway" "api_gateway" 5000; then
+    services_started=$((services_started + 1))
+fi
+
+if [ $services_started -eq 0 ]; then
+    echo -e "${RED}❌ No se pudo iniciar ningún servicio${NC}"
+    exit 1
+fi
+
+echo -e "${GREEN}✓ $services_started servicios iniciados${NC}"
+
+# Esperar un poco para que se estabilicen
+echo -e "${YELLOW}Esperando estabilización (10s)...${NC}"
 sleep 10
 
-# Crear túneles
-echo -e "${BLUE}=== Creando túneles públicos ===${NC}"
-
-echo -e "${PURPLE}Creando túneles para backend con $TUNNEL_TOOL...${NC}"
-create_tunnel 5000 "api_gateway" "$TUNNEL_TOOL"
-sleep 2
-create_tunnel 5001 "auth_service" "$TUNNEL_TOOL"
-sleep 2
-create_tunnel 5002 "user_service" "$TUNNEL_TOOL"
-sleep 2
-create_tunnel 5003 "task_services" "$TUNNEL_TOOL"
-
-echo -e "${PURPLE}Esperando que se establezcan las conexiones (15s)...${NC}"
-sleep 15
-
+# Mostrar servicios locales
+echo ""
 echo -e "${GREEN}=== SERVICIOS LOCALES ===${NC}"
-echo -e "${GREEN}API Gateway:${NC}        http://127.0.0.1:5000"
-echo -e "${GREEN}Auth Service:${NC}       http://127.0.0.1:5001"
-echo -e "${GREEN}User Service:${NC}       http://127.0.0.1:5002"
-echo -e "${GREEN}Task Service:${NC}       http://127.0.0.1:5003"
+echo -e "${GREEN}API Gateway:${NC}   http://127.0.0.1:5000"
+echo -e "${GREEN}Auth Service:${NC}  http://127.0.0.1:5001"
+echo -e "${GREEN}User Service:${NC}  http://127.0.0.1:5002"
+echo -e "${GREEN}Task Service:${NC}  http://127.0.0.1:5003"
+
+# Probar servicios
+echo ""
+echo -e "${BLUE}=== Probando servicios ===${NC}"
+test_service "http://127.0.0.1:5000/" "API Gateway"
+test_service "http://127.0.0.1:5001/health" "Auth Service"
+test_service "http://127.0.0.1:5002/health" "User Service"
+test_service "http://127.0.0.1:5003/health" "Task Service"
+
+# Preguntar si crear túneles
+echo ""
+echo -e "${PURPLE}¿Crear túneles públicos? (y/n)${NC}"
+read -r create_tunnels
+
+if [[ "$create_tunnels" =~ ^[Yy]$ ]]; then
+    echo -e "${BLUE}=== Creando túneles ===${NC}"
+    
+    # Solo crear túnel para API Gateway (punto de entrada principal)
+    create_simple_tunnel 5000 "api_gateway"
+    
+    echo ""
+    echo -e "${CYAN}=== VER URLs DE TÚNELES ===${NC}"
+    echo "tail -f $LOG_DIR/*_tunnel.log"
+fi
 
 echo ""
-echo -e "${CYAN}=== SERVICIOS PÚBLICOS (TÚNELES) ===${NC}"
-echo -e "${CYAN}API Gateway:${NC}        $(extract_tunnel_url 'api_gateway' "$TUNNEL_TOOL")"
-echo -e "${CYAN}Auth Service:${NC}       $(extract_tunnel_url 'auth_service' "$TUNNEL_TOOL")"
-echo -e "${CYAN}User Service:${NC}       $(extract_tunnel_url 'user_service' "$TUNNEL_TOOL")"
-echo -e "${CYAN}Task Service:${NC}       $(extract_tunnel_url 'task_services' "$TUNNEL_TOOL")"
+echo -e "${YELLOW}=== COMANDOS ÚTILES ===${NC}"
+echo -e "${BLUE}Ver logs:${NC}        tail -f $LOG_DIR/*.log"
+echo -e "${BLUE}Ver procesos:${NC}    ps aux | grep python"
+echo -e "${BLUE}Detener todo:${NC}    pkill -f 'python.*app.py'"
+echo -e "${BLUE}Ver PIDs:${NC}        ls -la $PID_DIR/"
 
 echo ""
-echo -e "${YELLOW}=== Endpoints de prueba (LOCALES) ===${NC}"
-echo -e "${GREEN}Health checks:${NC}"
-echo "curl http://127.0.0.1:5000/"
-echo "curl http://127.0.0.1:5001/health"
-echo "curl http://127.0.0.1:5002/health"
-echo "curl http://127.0.0.1:5003/health"
-
-echo ""
-echo -e "${GREEN}Login:${NC}"
-echo 'curl -X POST http://127.0.0.1:5000/auth/login -H "Content-Type: application/json" -d '"'"'{"username":"user1","password":"pass1"}'"'"
-
-echo ""
-echo -e "${YELLOW}=== Para el Frontend Angular ===${NC}"
-echo -e "${BLUE}Inicia Angular por separado:${NC}"
-echo "cd frontend"
-echo "ng serve --host 0.0.0.0 --port 4200 --disable-host-check"
-echo ""
-echo -e "${BLUE}Después crea túnel para frontend:${NC}"
-echo "ngrok http 4200"
-echo "# o"
-echo "cloudflared tunnel --url http://localhost:4200"
-
-echo ""
-echo -e "${YELLOW}=== Scripts útiles ===${NC}"
-echo -e "${BLUE}Ver URLs actuales:${NC}     ./get-tunnel-urls.sh"
-echo -e "${BLUE}Logs de servicios:${NC}     ls -la $LOG_DIR/*.log"
-echo -e "${BLUE}Logs de túneles:${NC}       ls -la $TUNNEL_LOG_DIR/*.log"
-echo -e "${BLUE}Detener todo:${NC}          ./stop_services.sh"
-
-echo ""
-echo -e "${GREEN}¡Todos los servicios backend están corriendo y son accesibles públicamente!${NC}"
-echo -e "${PURPLE}🌐 Inicia tu frontend Angular por separado${NC}"
-echo -e "${YELLOW}Los túneles se mantendrán activos hasta que cierres este script con Ctrl+C${NC}"
+echo -e "${GREEN}¡Servicios ejecutándose!${NC}"
+echo -e "${PURPLE}Presiona Ctrl+C para detener todo${NC}"
 
 # Función de limpieza
 cleanup() {
     echo ""
-    echo -e "${YELLOW}🛑 Cerrando servicios y túneles...${NC}"
+    echo -e "${YELLOW}🛑 Deteniendo servicios...${NC}"
     
-    # Matar túneles
-    if [ -d "$TUNNEL_LOG_DIR" ]; then
-        for pid_file in "$TUNNEL_LOG_DIR"/*.pid; do
-            if [ -f "$pid_file" ]; then
-                pid=$(cat "$pid_file")
-                kill "$pid" 2>/dev/null
-                rm -f "$pid_file"
+    # Matar por PID files
+    for pid_file in "$PID_DIR"/*.pid; do
+        if [ -f "$pid_file" ]; then
+            pid=$(cat "$pid_file" 2>/dev/null)
+            if [ ! -z "$pid" ]; then
+                kill "$pid" 2>/dev/null || true
             fi
-        done
-    fi
+            rm -f "$pid_file"
+        fi
+    done
     
-    # Matar servicios (usar tu stop_services.sh si existe)
-    if [ -f "./stop_services.sh" ]; then
-        ./stop_services.sh
-    else
-        for pid_file in "$LOG_DIR"/*.pid; do
-            if [ -f "$pid_file" ]; then
-                pid=$(cat "$pid_file")
-                kill "$pid" 2>/dev/null
-                rm -f "$pid_file"
-            fi
-        done
-    fi
+    # Matar procesos relacionados
+    pkill -f "python.*app\.py" 2>/dev/null || true
+    pkill -f "cloudflared" 2>/dev/null || true
+    pkill -f "ngrok" 2>/dev/null || true
     
     echo -e "${GREEN}✓ Limpieza completada${NC}"
     exit 0
 }
 
-# Capturar Ctrl+C para limpieza
 trap cleanup SIGINT
 
-# Mantener el script corriendo para que los túneles permanezcan activos
-echo ""
-echo -e "${PURPLE}Presiona Ctrl+C para cerrar todos los servicios y túneles${NC}"
-wait
+# Loop de mantenimiento
+while true; do
+    sleep 60
+    
+    # Verificar que al menos un proceso sigue activo
+    if ! pgrep -f "python.*app\.py" > /dev/null; then
+        echo -e "${RED}❌ Todos los servicios se cerraron${NC}"
+        exit 1
+    fi
+done
