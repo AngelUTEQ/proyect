@@ -20,6 +20,14 @@ NC='\033[0m' # No Color
 
 echo -e "${BLUE}=== Iniciando Microservicios Backend y Túneles ===${NC}"
 
+# Verificar conexión a internet
+echo -e "${BLUE}Verificando conexión a internet...${NC}"
+if ! ping -c 1 google.com &> /dev/null; then
+    echo -e "${RED}❌ Sin conexión a internet. Verifica tu conexión.${NC}"
+    exit 1
+fi
+echo -e "${GREEN}✓ Conexión a internet OK${NC}"
+
 # Verificar entorno virtual para backend
 if [ ! -d "$VENV_DIR" ]; then
     echo -e "${RED}Error: venv no encontrado en $VENV_DIR${NC}"
@@ -30,18 +38,29 @@ fi
 # Activar entorno virtual
 source "$VENV_DIR/bin/activate"
 
-# Verificar herramientas de túnel
+# Verificar herramientas de túnel con prioridad mejorada
 echo -e "${BLUE}Verificando herramientas de túnel...${NC}"
 TUNNEL_TOOL=""
+BACKUP_TUNNEL=""
 
-# Verificar cloudflared (para backend)
-if command -v cloudflared &> /dev/null; then
-    TUNNEL_TOOL="cloudflared"
-    echo -e "${GREEN}✓ cloudflared encontrado (será usado para backend)${NC}"
-elif command -v ngrok &> /dev/null; then
+# Verificar ngrok primero (más estable para múltiples túneles)
+if command -v ngrok &> /dev/null; then
     TUNNEL_TOOL="ngrok"
-    echo -e "${GREEN}✓ ngrok encontrado (será usado para backend)${NC}"
-else
+    echo -e "${GREEN}✓ ngrok encontrado (será usado como principal)${NC}"
+fi
+
+# Verificar cloudflared como backup
+if command -v cloudflared &> /dev/null; then
+    if [ -z "$TUNNEL_TOOL" ]; then
+        TUNNEL_TOOL="cloudflared"
+        echo -e "${GREEN}✓ cloudflared encontrado (será usado como principal)${NC}"
+    else
+        BACKUP_TUNNEL="cloudflared"
+        echo -e "${GREEN}✓ cloudflared encontrado (disponible como backup)${NC}"
+    fi
+fi
+
+if [ -z "$TUNNEL_TOOL" ]; then
     echo -e "${RED}No se encontró ninguna herramienta de túnel (ngrok o cloudflared)${NC}"
     echo -e "${YELLOW}Instala una de las dos:${NC}"
     echo -e "${YELLOW}- ngrok: https://ngrok.com/download${NC}"
@@ -55,19 +74,20 @@ check_port() {
     local service="$2"
     if lsof -i :"$port" > /dev/null 2>&1; then
         echo -e "${RED}Error: Puerto $port ($service) ya está en uso${NC}"
-        echo -e "${YELLOW}Usa: lsof -ti:$port | xargs kill -9${NC}"
-        exit 1
+        echo -e "${YELLOW}Deteniéndolo automáticamente...${NC}"
+        lsof -ti:"$port" | xargs kill -9 2>/dev/null || true
+        sleep 2
     fi
 }
 
-# Verificar puertos backend
+# Verificar y limpiar puertos backend
 echo -e "${BLUE}Verificando puertos...${NC}"
 check_port 5000 "API Gateway"
 check_port 5001 "Auth Service"
 check_port 5002 "User Service"
 check_port 5003 "Task Service"
 
-# Función para iniciar servicios Python
+# Función para iniciar servicios Python con mejor manejo de errores
 start_service() {
     local service_dir=$1
     local service_name=$2
@@ -87,23 +107,39 @@ start_service() {
     fi
     
     cd "$PROJECT_DIR/$service_dir" || exit 1
+    
+    # Iniciar el servicio con mejor logging
     nohup python "$script_file" > "$LOG_DIR/$service_name.log" 2>&1 &
     local pid=$!
     echo "$pid" > "$LOG_DIR/$service_name.pid"
     
-    # Esperar un momento para verificar que el proceso inició correctamente
-    sleep 2
-    if kill -0 "$pid" 2>/dev/null; then
-        echo -e "${GREEN}✓ $service_name iniciado correctamente (PID: $pid)${NC}"
-    else
-        echo -e "${RED}✗ Error al iniciar $service_name${NC}"
+    # Esperar y verificar múltiples veces
+    local retries=5
+    local started=false
+    
+    for ((i=1; i<=retries; i++)); do
+        sleep 2
+        if kill -0 "$pid" 2>/dev/null; then
+            # Verificar si el puerto está escuchando
+            if lsof -i :"$port" > /dev/null 2>&1; then
+                echo -e "${GREEN}✓ $service_name iniciado correctamente (PID: $pid, Puerto: $port)${NC}"
+                started=true
+                break
+            fi
+        fi
+        echo -e "${YELLOW}⏳ Reintento $i/$retries para $service_name...${NC}"
+    done
+    
+    if [ "$started" = false ]; then
+        echo -e "${RED}✗ Error al iniciar $service_name después de $retries intentos${NC}"
+        echo -e "${RED}Revisa el log: tail -f $LOG_DIR/$service_name.log${NC}"
         return 1
     fi
     
     cd "$PROJECT_DIR"
 }
 
-# Función para crear túneles con ngrok
+# Función para crear túneles con ngrok mejorada
 create_ngrok_tunnel() {
     local port=$1
     local service_name=$2
@@ -111,22 +147,39 @@ create_ngrok_tunnel() {
     
     echo -e "${PURPLE}🔗 Creando túnel ngrok para $service_name (puerto $port)...${NC}"
     
+    # Limpiar log anterior
+    > "$log_file"
+    
     # Crear túnel ngrok en background
-    nohup ngrok http $port > "$log_file" 2>&1 &
+    nohup ngrok http $port --log=stdout --log-level=info > "$log_file" 2>&1 &
     local tunnel_pid=$!
     echo "$tunnel_pid" > "$TUNNEL_LOG_DIR/${service_name}-tunnel.pid"
     
-    # Esperar un poco para que se establezca la conexión
-    sleep 5
+    # Esperar y verificar el túnel
+    local max_wait=15
+    local count=0
     
-    if kill -0 "$tunnel_pid" 2>/dev/null; then
-        echo -e "${GREEN}✓ Túnel ngrok $service_name creado (PID: $tunnel_pid)${NC}"
-    else
-        echo -e "${RED}✗ Error al crear túnel ngrok $service_name${NC}"
-    fi
+    while [ $count -lt $max_wait ]; do
+        sleep 1
+        count=$((count + 1))
+        
+        if ! kill -0 "$tunnel_pid" 2>/dev/null; then
+            echo -e "${RED}✗ Error: túnel ngrok $service_name se cerró inesperadamente${NC}"
+            return 1
+        fi
+        
+        # Buscar URL en el log
+        if grep -q "started tunnel" "$log_file" 2>/dev/null; then
+            echo -e "${GREEN}✓ Túnel ngrok $service_name establecido (PID: $tunnel_pid)${NC}"
+            return 0
+        fi
+    done
+    
+    echo -e "${YELLOW}⚠ Túnel ngrok $service_name tardando más de lo esperado${NC}"
+    return 0
 }
 
-# Función para crear túneles con cloudflared
+# Función para crear túneles con cloudflared mejorada
 create_cloudflared_tunnel() {
     local port=$1
     local service_name=$2
@@ -134,59 +187,100 @@ create_cloudflared_tunnel() {
     
     echo -e "${PURPLE}🔗 Creando túnel cloudflared para $service_name (puerto $port)...${NC}"
     
-    # Crear túnel en background
-    nohup cloudflared tunnel --url http://localhost:$port > "$log_file" 2>&1 &
+    # Limpiar log anterior
+    > "$log_file"
+    
+    # Intentar crear túnel con timeout
+    timeout 30 cloudflared tunnel --url http://localhost:$port > "$log_file" 2>&1 &
     local tunnel_pid=$!
     echo "$tunnel_pid" > "$TUNNEL_LOG_DIR/${service_name}-tunnel.pid"
     
-    # Esperar un poco para que se establezca la conexión
-    sleep 3
+    # Esperar y verificar
+    local max_wait=20
+    local count=0
     
-    if kill -0 "$tunnel_pid" 2>/dev/null; then
-        echo -e "${GREEN}✓ Túnel cloudflared $service_name creado (PID: $tunnel_pid)${NC}"
-    else
-        echo -e "${RED}✗ Error al crear túnel cloudflared $service_name${NC}"
-    fi
+    while [ $count -lt $max_wait ]; do
+        sleep 1
+        count=$((count + 1))
+        
+        # Verificar si el proceso sigue activo
+        if ! kill -0 "$tunnel_pid" 2>/dev/null; then
+            echo -e "${RED}✗ Error: túnel cloudflared $service_name falló${NC}"
+            # Mostrar últimas líneas del error
+            echo -e "${RED}Últimos errores:${NC}"
+            tail -5 "$log_file" 2>/dev/null || echo "No hay logs disponibles"
+            return 1
+        fi
+        
+        # Buscar URL exitosa
+        if grep -q "https://.*\.trycloudflare\.com" "$log_file" 2>/dev/null; then
+            echo -e "${GREEN}✓ Túnel cloudflared $service_name establecido (PID: $tunnel_pid)${NC}"
+            return 0
+        fi
+        
+        # Verificar errores conocidos
+        if grep -q "dial tcp.*lookup.*trycloudflare" "$log_file" 2>/dev/null; then
+            echo -e "${RED}✗ Error de DNS/conectividad en cloudflared para $service_name${NC}"
+            kill "$tunnel_pid" 2>/dev/null
+            return 1
+        fi
+    done
+    
+    echo -e "${YELLOW}⚠ Túnel cloudflared $service_name tardando más de lo esperado${NC}"
+    return 0
 }
 
-# Función para crear túnel según la herramienta
-create_tunnel() {
+# Función para crear túnel con fallback
+create_tunnel_with_fallback() {
     local port=$1
     local service_name=$2
-    local tool=$3
     
-    if [ "$tool" = "ngrok" ]; then
-        create_ngrok_tunnel $port $service_name
+    if [ "$TUNNEL_TOOL" = "ngrok" ]; then
+        if ! create_ngrok_tunnel $port $service_name; then
+            if [ ! -z "$BACKUP_TUNNEL" ]; then
+                echo -e "${YELLOW}🔄 Intentando con $BACKUP_TUNNEL como fallback...${NC}"
+                create_cloudflared_tunnel $port $service_name
+            fi
+        fi
     else
-        create_cloudflared_tunnel $port $service_name
+        if ! create_cloudflared_tunnel $port $service_name; then
+            if [ ! -z "$BACKUP_TUNNEL" ]; then
+                echo -e "${YELLOW}🔄 Intentando con ngrok como fallback...${NC}"
+                create_ngrok_tunnel $port $service_name
+            fi
+        fi
     fi
 }
 
-# Función para extraer URL del túnel ngrok
+# Función para extraer URL del túnel ngrok mejorada
 extract_ngrok_url() {
     local service_name=$1
     local log_file="$TUNNEL_LOG_DIR/${service_name}-tunnel.log"
     
     if [ -f "$log_file" ]; then
-        # Buscar la URL en el log de ngrok
         local url=$(grep -o 'https://[^[:space:]]*\.ngrok[^[:space:]]*' "$log_file" 2>/dev/null | head -1)
         if [ ! -z "$url" ]; then
             echo "$url"
         else
-            echo "⏳ Estableciendo..."
+            # Buscar también en formato JSON de ngrok v3
+            local url_json=$(grep -o '"public_url":"https://[^"]*"' "$log_file" 2>/dev/null | cut -d'"' -f4 | head -1)
+            if [ ! -z "$url_json" ]; then
+                echo "$url_json"
+            else
+                echo "⏳ Estableciendo..."
+            fi
         fi
     else
-        echo "❌ No disponible"
+        echo "❌ Log no disponible"
     fi
 }
 
-# Función para extraer URL del túnel cloudflared
+# Función para extraer URL del túnel cloudflared mejorada
 extract_cloudflared_url() {
     local service_name=$1
     local log_file="$TUNNEL_LOG_DIR/${service_name}-tunnel.log"
     
     if [ -f "$log_file" ]; then
-        # Buscar la URL en el log
         local url=$(grep -o 'https://[^[:space:]]*\.trycloudflare\.com' "$log_file" 2>/dev/null | head -1)
         if [ ! -z "$url" ]; then
             echo "$url"
@@ -194,54 +288,93 @@ extract_cloudflared_url() {
             echo "⏳ Estableciendo..."
         fi
     else
-        echo "❌ No disponible"
+        echo "❌ Log no disponible"
     fi
 }
 
 # Función para extraer URL según la herramienta
 extract_tunnel_url() {
     local service_name=$1
-    local tool=$2
     
-    if [ "$tool" = "ngrok" ]; then
-        extract_ngrok_url $service_name
+    # Intentar con ambas herramientas
+    local ngrok_url=$(extract_ngrok_url $service_name)
+    local cloudflared_url=$(extract_cloudflared_url $service_name)
+    
+    if [[ "$ngrok_url" =~ ^https:// ]]; then
+        echo "$ngrok_url"
+    elif [[ "$cloudflared_url" =~ ^https:// ]]; then
+        echo "$cloudflared_url"
     else
-        extract_cloudflared_url $service_name
+        echo "⏳ Estableciendo..."
     fi
 }
 
 # Iniciar servicios en orden
-echo -e "${BLUE}Iniciando servicios backend...${NC}"
+echo -e "${BLUE}=== Iniciando servicios backend ===${NC}"
 
-start_service "auth_service" "auth_service" 5001 "app.py"
-sleep 1
-start_service "user_service" "user_service" 5002 "app.py"
-sleep 1
-start_service "task_services" "task_services" 5003 "app.py"
-sleep 1
-start_service "api_gateway" "api_gateway" 5000 "app.py"
-
-echo -e "${GREEN}=== Todos los servicios backend iniciados ===${NC}"
-
-# Esperar un poco más para que los servicios estén completamente listos
-echo -e "${YELLOW}Esperando que los servicios estén completamente listos (10s)...${NC}"
-sleep 10
-
-# Crear túneles
-echo -e "${BLUE}=== Creando túneles públicos ===${NC}"
-
-echo -e "${PURPLE}Creando túneles para backend con $TUNNEL_TOOL...${NC}"
-create_tunnel 5000 "api_gateway" "$TUNNEL_TOOL"
+if ! start_service "auth_service" "auth_service" 5001 "app.py"; then
+    echo -e "${RED}❌ Falló auth_service, continuando con los demás...${NC}"
+fi
 sleep 2
-create_tunnel 5001 "auth_service" "$TUNNEL_TOOL"
-sleep 2
-create_tunnel 5002 "user_service" "$TUNNEL_TOOL"
-sleep 2
-create_tunnel 5003 "task_services" "$TUNNEL_TOOL"
 
-echo -e "${PURPLE}Esperando que se establezcan las conexiones (15s)...${NC}"
-sleep 15
+if ! start_service "user_service" "user_service" 5002 "app.py"; then
+    echo -e "${RED}❌ Falló user_service, continuando con los demás...${NC}"
+fi
+sleep 2
 
+if ! start_service "task_services" "task_services" 5003 "app.py"; then
+    echo -e "${RED}❌ Falló task_services, continuando con los demás...${NC}"
+fi
+sleep 2
+
+if ! start_service "api_gateway" "api_gateway" 5000 "app.py"; then
+    echo -e "${RED}❌ Falló api_gateway${NC}"
+fi
+
+echo -e "${GREEN}=== Servicios backend iniciados ===${NC}"
+
+# Esperar que los servicios estén completamente listos
+echo -e "${YELLOW}Esperando que los servicios estén completamente listos (5s)...${NC}"
+sleep 5
+
+# Verificar cuáles servicios están realmente corriendo
+echo -e "${BLUE}=== Verificando servicios activos ===${NC}"
+declare -a active_services=()
+
+for port_service in "5000:api_gateway" "5001:auth_service" "5002:user_service" "5003:task_services"; do
+    port=$(echo $port_service | cut -d: -f1)
+    service=$(echo $port_service | cut -d: -f2)
+    
+    if lsof -i :"$port" > /dev/null 2>&1; then
+        echo -e "${GREEN}✓ $service (puerto $port)${NC}"
+        active_services+=("$port:$service")
+    else
+        echo -e "${RED}✗ $service (puerto $port)${NC}"
+    fi
+done
+
+# Solo crear túneles para servicios activos
+if [ ${#active_services[@]} -gt 0 ]; then
+    echo -e "${BLUE}=== Creando túneles para servicios activos ===${NC}"
+    
+    for service_info in "${active_services[@]}"; do
+        port=$(echo $service_info | cut -d: -f1)
+        service=$(echo $service_info | cut -d: -f2)
+        
+        create_tunnel_with_fallback $port $service
+        sleep 3  # Esperar entre túneles para evitar rate limiting
+    done
+    
+    echo -e "${PURPLE}Esperando que se establezcan completamente los túneles (10s)...${NC}"
+    sleep 10
+    
+else
+    echo -e "${RED}❌ No hay servicios activos para crear túneles${NC}"
+    exit 1
+fi
+
+# Mostrar información de servicios
+echo ""
 echo -e "${GREEN}=== SERVICIOS LOCALES ===${NC}"
 echo -e "${GREEN}API Gateway:${NC}        http://127.0.0.1:5000"
 echo -e "${GREEN}Auth Service:${NC}       http://127.0.0.1:5001"
@@ -250,83 +383,100 @@ echo -e "${GREEN}Task Service:${NC}       http://127.0.0.1:5003"
 
 echo ""
 echo -e "${CYAN}=== SERVICIOS PÚBLICOS (TÚNELES) ===${NC}"
-echo -e "${CYAN}API Gateway:${NC}        $(extract_tunnel_url 'api_gateway' "$TUNNEL_TOOL")"
-echo -e "${CYAN}Auth Service:${NC}       $(extract_tunnel_url 'auth_service' "$TUNNEL_TOOL")"
-echo -e "${CYAN}User Service:${NC}       $(extract_tunnel_url 'user_service' "$TUNNEL_TOOL")"
-echo -e "${CYAN}Task Service:${NC}       $(extract_tunnel_url 'task_services' "$TUNNEL_TOOL")"
+echo -e "${CYAN}API Gateway:${NC}        $(extract_tunnel_url 'api_gateway')"
+echo -e "${CYAN}Auth Service:${NC}       $(extract_tunnel_url 'auth_service')"
+echo -e "${CYAN}User Service:${NC}       $(extract_tunnel_url 'user_service')"
+echo -e "${CYAN}Task Service:${NC}       $(extract_tunnel_url 'task_services')"
 
 echo ""
-echo -e "${YELLOW}=== Endpoints de prueba (LOCALES) ===${NC}"
-echo -e "${GREEN}Health checks:${NC}"
-echo "curl http://127.0.0.1:5000/"
-echo "curl http://127.0.0.1:5001/health"
-echo "curl http://127.0.0.1:5002/health"
-echo "curl http://127.0.0.1:5003/health"
+echo -e "${YELLOW}=== Comandos útiles ===${NC}"
+echo -e "${BLUE}Ver URLs actualizadas:${NC}"
+echo "watch -n 5 './get-tunnel-urls.sh'"
+echo ""
+echo -e "${BLUE}Logs en tiempo real:${NC}"
+echo "tail -f $LOG_DIR/*.log"
+echo "tail -f $TUNNEL_LOG_DIR/*.log"
+echo ""
+echo -e "${BLUE}Health checks:${NC}"
+echo "curl -s http://127.0.0.1:5000/ || echo 'API Gateway no responde'"
+echo "curl -s http://127.0.0.1:5001/health || echo 'Auth Service no responde'"
+echo ""
+echo -e "${BLUE}Detener todo:${NC}"
+echo "./stop_services.sh"
 
 echo ""
-echo -e "${GREEN}Login:${NC}"
-echo 'curl -X POST http://127.0.0.1:5000/auth/login -H "Content-Type: application/json" -d '"'"'{"username":"user1","password":"pass1"}'"'"
+echo -e "${GREEN}¡Sistema iniciado! Usa Ctrl+C para detener todo${NC}"
 
-echo ""
-echo -e "${YELLOW}=== Para el Frontend Angular ===${NC}"
-echo -e "${BLUE}Inicia Angular por separado:${NC}"
-echo "cd frontend"
-echo "ng serve --host 0.0.0.0 --port 4200 --disable-host-check"
-echo ""
-echo -e "${BLUE}Después crea túnel para frontend:${NC}"
-echo "ngrok http 4200"
-echo "# o"
-echo "cloudflared tunnel --url http://localhost:4200"
-
-echo ""
-echo -e "${YELLOW}=== Scripts útiles ===${NC}"
-echo -e "${BLUE}Ver URLs actuales:${NC}     ./get-tunnel-urls.sh"
-echo -e "${BLUE}Logs de servicios:${NC}     ls -la $LOG_DIR/*.log"
-echo -e "${BLUE}Logs de túneles:${NC}       ls -la $TUNNEL_LOG_DIR/*.log"
-echo -e "${BLUE}Detener todo:${NC}          ./stop_services.sh"
-
-echo ""
-echo -e "${GREEN}¡Todos los servicios backend están corriendo y son accesibles públicamente!${NC}"
-echo -e "${PURPLE}🌐 Inicia tu frontend Angular por separado${NC}"
-echo -e "${YELLOW}Los túneles se mantendrán activos hasta que cierres este script con Ctrl+C${NC}"
-
-# Función de limpieza
+# Función de limpieza mejorada
 cleanup() {
     echo ""
-    echo -e "${YELLOW}🛑 Cerrando servicios y túneles...${NC}"
+    echo -e "${YELLOW}🛑 Iniciando limpieza...${NC}"
     
     # Matar túneles
+    echo -e "${YELLOW}Cerrando túneles...${NC}"
     if [ -d "$TUNNEL_LOG_DIR" ]; then
         for pid_file in "$TUNNEL_LOG_DIR"/*.pid; do
             if [ -f "$pid_file" ]; then
-                pid=$(cat "$pid_file")
-                kill "$pid" 2>/dev/null
+                pid=$(cat "$pid_file" 2>/dev/null)
+                if [ ! -z "$pid" ]; then
+                    kill -TERM "$pid" 2>/dev/null || true
+                    sleep 1
+                    kill -KILL "$pid" 2>/dev/null || true
+                fi
                 rm -f "$pid_file"
             fi
         done
     fi
     
-    # Matar servicios (usar tu stop_services.sh si existe)
+    # Matar servicios
+    echo -e "${YELLOW}Cerrando servicios...${NC}"
     if [ -f "./stop_services.sh" ]; then
         ./stop_services.sh
     else
         for pid_file in "$LOG_DIR"/*.pid; do
             if [ -f "$pid_file" ]; then
-                pid=$(cat "$pid_file")
-                kill "$pid" 2>/dev/null
+                pid=$(cat "$pid_file" 2>/dev/null)
+                if [ ! -z "$pid" ]; then
+                    kill -TERM "$pid" 2>/dev/null || true
+                    sleep 1
+                    kill -KILL "$pid" 2>/dev/null || true
+                fi
                 rm -f "$pid_file"
             fi
         done
     fi
     
+    # Limpiar puertos si es necesario
+    for port in 5000 5001 5002 5003; do
+        lsof -ti:"$port" | xargs kill -9 2>/dev/null || true
+    done
+    
     echo -e "${GREEN}✓ Limpieza completada${NC}"
     exit 0
 }
 
-# Capturar Ctrl+C para limpieza
-trap cleanup SIGINT
+# Capturar señales para limpieza
+trap cleanup SIGINT SIGTERM
 
-# Mantener el script corriendo para que los túneles permanezcan activos
+# Mantener el script corriendo
 echo ""
-echo -e "${PURPLE}Presiona Ctrl+C para cerrar todos los servicios y túneles${NC}"
-wait
+echo -e "${PURPLE}Los servicios están corriendo. Presiona Ctrl+C para cerrar todo${NC}"
+echo -e "${CYAN}Tip: Abre otra terminal para seguir trabajando${NC}"
+
+# Loop infinito con verificación periódica
+while true; do
+    sleep 30
+    # Verificar que al menos un servicio siga activo
+    services_running=false
+    for port in 5000 5001 5002 5003; do
+        if lsof -i :"$port" > /dev/null 2>&1; then
+            services_running=true
+            break
+        fi
+    done
+    
+    if [ "$services_running" = false ]; then
+        echo -e "${RED}❌ Todos los servicios se han cerrado inesperadamente${NC}"
+        exit 1
+    fi
+done
