@@ -381,12 +381,6 @@ echo -e "${GREEN}Auth Service:${NC}       http://127.0.0.1:5001"
 echo -e "${GREEN}User Service:${NC}       http://127.0.0.1:5002"
 echo -e "${GREEN}Task Service:${NC}       http://127.0.0.1:5003"
 
-echo ""
-echo -e "${CYAN}=== SERVICIOS PÚBLICOS (TÚNELES) ===${NC}"
-echo -e "${CYAN}API Gateway:${NC}        $(extract_tunnel_url 'api_gateway')"
-echo -e "${CYAN}Auth Service:${NC}       $(extract_tunnel_url 'auth_service')"
-echo -e "${CYAN}User Service:${NC}       $(extract_tunnel_url 'user_service')"
-echo -e "${CYAN}Task Service:${NC}       $(extract_tunnel_url 'task_services')"
 
 echo ""
 echo -e "${YELLOW}=== Comandos útiles ===${NC}"
@@ -462,6 +456,13 @@ trap cleanup SIGINT SIGTERM
 echo ""
 echo -e "${PURPLE}Los servicios están corriendo. Presiona Ctrl+C para cerrar todo${NC}"
 echo -e "${CYAN}Tip: Abre otra terminal para seguir trabajando${NC}"
+
+echo ""
+echo -e "${CYAN}=== SERVICIOS PÚBLICOS (TÚNELES) ===${NC}"
+echo -e "${CYAN}API Gateway:${NC}        $(extract_tunnel_url 'api_gateway')"
+echo -e "${CYAN}Auth Service:${NC}       $(extract_tunnel_url 'auth_service')"
+echo -e "${CYAN}User Service:${NC}       $(extract_tunnel_url 'user_service')"
+echo -e "${CYAN}Task Service:${NC}       $(extract_tunnel_url 'task_services')"
 
 # Loop infinito con verificación periódica
 while true; do
